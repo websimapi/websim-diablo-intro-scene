@@ -13,53 +13,68 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 1); // Keep ambient low for silhouette effect
+// Lighting (Mainly affects the sky now, terrain/sword are basic materials)
+const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Reduce ambient influence
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xff8c00, 15); // Significantly increased intensity for sun effect
-directionalLight.position.set(0, 5, -15); // Moved further back to be clearly behind hill
-directionalLight.target.position.set(0, 2, 0); // Target the hill/sword area
+const directionalLight = new THREE.DirectionalLight(0xff8c00, 15); // Keep for sky glow influence
+directionalLight.position.set(0, 5, -15);
+directionalLight.target.position.set(0, 2, 0);
 scene.add(directionalLight);
 scene.add(directionalLight.target);
 
-// Ground/Hill - More pronounced central mound
-const groundGeometry = new THREE.PlaneGeometry(20, 20, 64, 64); // Increased segments for smoother hill
-// Displace vertices to create a hill shape
+// Ground/Hill - More pronounced central mound with more detail
+const groundGeometry = new THREE.PlaneGeometry(20, 20, 128, 128); // Increased segments significantly
+// Displace vertices to create a more detailed, rocky hill shape
 const positionAttribute = groundGeometry.getAttribute('position');
+const peakHeight = 4.5; // Max height of the central mound
+const roughnessFactor = 0.8; // How jagged the rocks are
+const detailFactor = 3.5; // Frequency of smaller details
+
 for (let i = 0; i < positionAttribute.count; i++) {
     const vertex = new THREE.Vector3();
     vertex.fromBufferAttribute(positionAttribute, i);
-    // Create a more prominent central mound
+
+    // Base Mound Shape (Gaussian-like)
     const dist = Math.sqrt(vertex.x * vertex.x + vertex.z * vertex.z);
-    // Increased base height, steeper falloff, adjusted noise
-    let elevation = Math.max(0, 4.0 - dist * 1.5 + Math.sin(dist * 1.8 + vertex.x * 0.2) * 0.5);
-    elevation *= Math.pow(1.0 - Math.abs(vertex.x) / 10.0, 0.5); // Taper edges more gently
-    elevation += (Math.random() - 0.5) * 0.6; // Add roughness
+    let elevation = peakHeight * Math.exp(-(dist * dist) / 10.0); // Gaussian falloff from center
+
+    // Add layered noise for rocky detail
+    // Layer 1: Medium-scale roughness
+    elevation += (Math.sin(vertex.x * 1.2 + dist * 0.8) * Math.cos(vertex.z * 0.8)) * roughnessFactor * 0.6;
+    // Layer 2: Smaller scale detail
+    elevation += (Math.sin(vertex.x * detailFactor + vertex.z * detailFactor * 0.7) * Math.cos(dist * detailFactor * 1.2)) * roughnessFactor * 0.3;
+    // Layer 3: Fine noise
+    elevation += (Math.random() - 0.5) * roughnessFactor * 0.2;
+
+    // Ensure edges taper down more realistically
+    elevation *= Math.smoothstep(10.0, 4.0, dist); // Taper smoothly towards the edge
+
+    // Clamp elevation to avoid negative values near the edges if noise is strong
+    elevation = Math.max(0, elevation);
 
     positionAttribute.setY(i, elevation);
 
-    // Add some horizontal roughness too
-    positionAttribute.setX(i, vertex.x + (Math.random() - 0.5) * 0.2);
-    positionAttribute.setZ(i, vertex.z + (Math.random() - 0.5) * 0.2);
+    // Add slight horizontal displacement for extra roughness
+    positionAttribute.setX(i, vertex.x + (Math.random() - 0.5) * 0.1);
+    positionAttribute.setZ(i, vertex.z + (Math.random() - 0.5) * 0.1);
 }
-groundGeometry.computeVertexNormals(); // Recalculate normals for lighting
+groundGeometry.computeVertexNormals(); // Still compute for potential future use, though MeshBasicMaterial ignores them
 
-const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x111111, // Darker color for silhouette
-    roughness: 0.95, // Increase roughness
-    metalness: 0.0
+// Use MeshBasicMaterial for a pure black silhouette unaffected by light
+const groundMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000, // Pure black
 });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2; // Rotate to be flat
-ground.position.y = -1.5; // Lower it slightly more
+ground.position.y = -1.5;
 scene.add(ground);
 
-// Distant Hills (Silhouettes)
-const distantHillMaterial = new THREE.MeshBasicMaterial({ color: 0x050505 }); // Even darker for silhouette
+// Distant Hills (Silhouettes) - Ensure pure black
+const distantHillMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 }); // Pure black
 
 // Left Hill - Taller and more jagged
-const leftHillGeometry = new THREE.PlaneGeometry(15, 12); // Increased height
+const leftHillGeometry = new THREE.PlaneGeometry(15, 12, 64, 64); // Added segments for potential detail
 const leftPosAttr = leftHillGeometry.getAttribute('position');
 for (let i = 0; i < leftPosAttr.count; i++) {
     const vertex = new THREE.Vector3();
@@ -73,12 +88,12 @@ for (let i = 0; i < leftPosAttr.count; i++) {
 }
 leftHillGeometry.computeVertexNormals();
 const leftHill = new THREE.Mesh(leftHillGeometry, distantHillMaterial);
-leftHill.position.set(-10, 2, -14); // Position to the left, higher and further back
+leftHill.position.set(-10, 2, -14);
 leftHill.rotation.y = Math.PI / 12;
 scene.add(leftHill);
 
 // Right Hill - Taller and more jagged
-const rightHillGeometry = new THREE.PlaneGeometry(17, 14); // Increased height
+const rightHillGeometry = new THREE.PlaneGeometry(17, 14, 64, 64); // Added segments
 const rightPosAttr = rightHillGeometry.getAttribute('position');
 for (let i = 0; i < rightPosAttr.count; i++) {
     const vertex = new THREE.Vector3();
@@ -92,62 +107,68 @@ for (let i = 0; i < rightPosAttr.count; i++) {
 }
 rightHillGeometry.computeVertexNormals();
 const rightHill = new THREE.Mesh(rightHillGeometry, distantHillMaterial);
-rightHill.position.set(11, 2.5, -15); // Position to the right, higher and back
+rightHill.position.set(11, 2.5, -15);
 rightHill.rotation.y = -Math.PI / 15;
 scene.add(rightHill);
 
-// Sword - Increased size and slightly refined shape
+// Sword - Use MeshBasicMaterial for pure silhouette
 const swordGroup = new THREE.Group();
+const swordMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 }); // Pure black silhouette
 
 // Blade
-const bladeGeometry = new THREE.BoxGeometry(0.2, 3.5, 0.04); // Wider and slightly longer blade
-const bladeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x050505, // Very dark for silhouette
-    roughness: 0.8,
-    metalness: 0.1 // Low metalness
-});
-const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
-blade.position.y = 1.75; // Center the blade vertically
+const bladeGeometry = new THREE.BoxGeometry(0.2, 3.5, 0.04);
+const blade = new THREE.Mesh(bladeGeometry, swordMaterial); // Use new basic material
+blade.position.y = 1.75;
 swordGroup.add(blade);
 
 // Hilt Guard (Crossguard)
-const hiltGeometry = new THREE.BoxGeometry(1.0, 0.2, 0.18); // Wider and thicker guard
-const hilt = new THREE.Mesh(hiltGeometry, bladeMaterial);
-hilt.position.y = 0; // Position at the base of the blade
+const hiltGeometry = new THREE.BoxGeometry(1.0, 0.2, 0.18);
+const hilt = new THREE.Mesh(hiltGeometry, swordMaterial); // Use new basic material
+hilt.position.y = 0;
 swordGroup.add(hilt);
 
 // Pommel (Simple Sphere)
-const pommelGeometry = new THREE.SphereGeometry(0.15, 16, 16); // Slightly larger pommel
-const pommel = new THREE.Mesh(pommelGeometry, bladeMaterial);
-pommel.position.y = -0.25; // Below the hilt
+const pommelGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+const pommel = new THREE.Mesh(pommelGeometry, swordMaterial); // Use new basic material
+pommel.position.y = -0.25;
 swordGroup.add(pommel);
 
-// Hilt arms (wing-like shapes) - Refined curve and size
+// Hilt arms (wing-like shapes)
 const armShape = new THREE.Shape();
-// Adjusted points for a potentially better shape
 armShape.moveTo(0, 0.06);
-armShape.bezierCurveTo(0.15, 0.2, 0.4, 0.25, 0.5, 0.1); // Wider, slightly flatter curve
-armShape.lineTo(0.45, -0.15); // Taper inwards more at bottom
-armShape.bezierCurveTo(0.3, -0.1, 0.15, -0.05, 0, 0); // Curve back to center
+armShape.bezierCurveTo(0.15, 0.2, 0.4, 0.25, 0.5, 0.1);
+armShape.lineTo(0.45, -0.15);
+armShape.bezierCurveTo(0.3, -0.1, 0.15, -0.05, 0, 0);
 armShape.closePath();
 
-const extrudeSettings = { depth: 0.1, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1 }; // Slightly thicker depth
+const extrudeSettings = { depth: 0.1, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1 };
 const armGeometry = new THREE.ExtrudeGeometry(armShape, extrudeSettings);
 
-const leftArm = new THREE.Mesh(armGeometry, bladeMaterial);
-leftArm.position.set(-0.5, 0, 0.0); // Adjusted position for wider hilt
-leftArm.rotation.z = Math.PI / 8; // Slightly more upward angle
+const leftArm = new THREE.Mesh(armGeometry, swordMaterial); // Use new basic material
+leftArm.position.set(-0.5, 0, 0.0);
+leftArm.rotation.z = Math.PI / 8;
 swordGroup.add(leftArm);
 
-const rightArm = new THREE.Mesh(armGeometry, bladeMaterial);
-rightArm.position.set(0.5, 0, 0.0); // Adjusted position for wider hilt
-rightArm.rotation.z = -Math.PI / 8; // Slightly more upward angle
-rightArm.rotation.y = Math.PI; // Flip geometry
+const rightArm = new THREE.Mesh(armGeometry, swordMaterial); // Use new basic material
+rightArm.position.set(0.5, 0, 0.0);
+rightArm.rotation.z = -Math.PI / 8;
+rightArm.rotation.y = Math.PI;
 swordGroup.add(rightArm);
 
-swordGroup.position.set(0, 1.8, 0.3); // Position sword higher on the taller hill
-swordGroup.rotation.z = -Math.PI / 50; // Very slight tilt maintained
-swordGroup.scale.set(1.8, 1.8, 1.8); // Significantly larger sword
+// Find highest point on the generated hill near the center to place the sword
+const raycaster = new THREE.Raycaster();
+const centerGround = new THREE.Vector3(0, 5, 0.3); // Start ray above center, slightly forward
+const down = new THREE.Vector3(0, -1, 0);
+raycaster.set(centerGround, down);
+const intersects = raycaster.intersectObject(ground);
+let swordYPosition = 1.8; // Default position
+if (intersects.length > 0) {
+    swordYPosition = intersects[0].point.y + 0.1; // Place slightly above intersection point
+}
+
+swordGroup.position.set(0, swordYPosition + 1.7, 0.3); // Adjust Y based on terrain height, +1.7 approx half blade height + pommel offset
+swordGroup.rotation.z = -Math.PI / 50;
+swordGroup.scale.set(1.8, 1.8, 1.8);
 scene.add(swordGroup);
 
 // Background (Sky) - Brighter, larger glow
