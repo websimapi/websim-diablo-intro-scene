@@ -13,6 +13,14 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
+// Helper function for smoothstep (GLSL equivalent)
+function smoothstep(edge0, edge1, x) {
+  // Scale, bias and saturate x to 0..1 range
+  x = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  // Evaluate polynomial
+  return x * x * (3 - 2 * x);
+}
+
 // Lighting (Mainly affects the sky now, terrain/sword are basic materials)
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // Reduce ambient influence
 scene.add(ambientLight);
@@ -48,7 +56,7 @@ for (let i = 0; i < positionAttribute.count; i++) {
     elevation += (Math.random() - 0.5) * roughnessFactor * 0.2;
 
     // Ensure edges taper down more realistically
-    elevation *= Math.smoothstep(10.0, 4.0, dist); // Taper smoothly towards the edge
+    elevation *= smoothstep(10.0, 4.0, dist); // Taper smoothly towards the edge (Use custom smoothstep)
 
     // Clamp elevation to avoid negative values near the edges if noise is strong
     elevation = Math.max(0, elevation);
@@ -189,20 +197,39 @@ const skyMaterial = new THREE.ShaderMaterial({
         uniform vec3 glowColor; // Center glow color
         uniform float time;
 
+        // Standard 2D random function
         float rand(vec2 co){
             return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
         }
 
-        float noise(vec2 st) {
+        // 2D Noise based on Morgan McGuire @morgan3d
+        // https://www.shadertoy.com/view/4dS3Wd
+        float noise (in vec2 st) {
             vec2 i = floor(st);
             vec2 f = fract(st);
+
+            // Four corners in 2D of a tile
             float a = rand(i);
             float b = rand(i + vec2(1.0, 0.0));
             float c = rand(i + vec2(0.0, 1.0));
             float d = rand(i + vec2(1.0, 1.0));
-            vec2 u = f * f * (3.0 - 2.0 * f);
-            return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+
+            // Smooth Interpolation using Smoothstep
+            vec2 u = f*f*(3.0-2.0*f);
+
+            // Mix 4 corners percentages
+            return mix(a, b, u.x) +
+                    (c - a)* u.y * (1.0 - u.x) +
+                    (d - b) * u.x * u.y;
         }
+
+        // GLSL smoothstep implementation in JS-like syntax (for reference)
+        /* float smoothstep(float edge0, float edge1, float x) {
+          // Scale, bias and saturate x to 0..1 range
+          x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+          // Evaluate polynomial
+          return x * x * (3.0 - 2.0 * x);
+       }*/
 
         void main() {
             // Gradient blending - adjusted stops for emphasis
